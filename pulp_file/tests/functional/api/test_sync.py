@@ -2,10 +2,11 @@
 """Tests that sync file plugin repositories."""
 import unittest
 
-from pulp_smash import api, cli, config
+from pulp_smash import api, cli, config, utils
 from pulp_smash.exceptions import TaskReportError
-from pulp_smash.pulp3.constants import MEDIA_PATH, REPO_PATH
+from pulp_smash.pulp3.constants import ARTIFACTS_PATH, MEDIA_PATH, REPO_PATH
 from pulp_smash.pulp3.utils import (
+    delete_orphans,
     gen_repo,
     get_added_content_summary,
     get_content_summary,
@@ -14,11 +15,15 @@ from pulp_smash.pulp3.utils import (
 
 from pulp_file.tests.functional.constants import (
     FILE2_FIXTURE_MANIFEST_URL,
+    FILE2_URL,
+    FILE_CONTENT_PATH,
     FILE_FIXTURE_SUMMARY,
     FILE_INVALID_MANIFEST_URL,
     FILE_REMOTE_PATH,
+    FILE_SINGLE_SUMMARY,
+    FILE_URL,
 )
-from pulp_file.tests.functional.utils import gen_file_remote
+from pulp_file.tests.functional.utils import gen_file_content_attrs, gen_file_remote
 from pulp_file.tests.functional.utils import set_up_module as setUpModule  # noqa:F401
 
 
@@ -196,3 +201,52 @@ class SyncUploadDuplicateFileRepoTestCase(unittest.TestCase):
         sync(self.cfg, remote2, repo)
         repo = self.client.get(repo['_href'])
         self.assertDictEqual(get_added_content_summary(repo), FILE_FIXTURE_SUMMARY)
+
+    def test_duplicate_file_upload(self):
+        """Upload to a repository with same file names.
+
+        This test does the following.
+
+        1. Create a repoository in pulp.
+        2. Upload two different files of same name to the repository,
+        3. Check whether the created repo has only one copy of the file.
+
+        This test targets the following issue:
+
+        `Pulp #4738 <https://pulp.plan.io/issues/4738>`_
+        `Pulp #4028 <https://pulp.plan.io/issues/4028>`_
+        """
+        # Step 1
+        repo = self.client.post(REPO_PATH, gen_repo())
+        delete_orphans(self.cfg)
+        self.addCleanup(self.client.delete, repo['_href'])
+        # Step 2
+        file_artifact = self.client.post(
+            ARTIFACTS_PATH,
+            files={'file': utils.http_get(FILE_URL)}
+        )
+
+        file_content_unit = self.client.post(
+            FILE_CONTENT_PATH,
+            gen_file_content_attrs(file_artifact, relative_path='1.iso')
+        )
+
+        file2_artifact = self.client.post(
+            ARTIFACTS_PATH,
+            files={'file': utils.http_get(FILE2_URL)}
+        )
+
+        file2_content_unit = self.client.post(
+            FILE_CONTENT_PATH,
+            gen_file_content_attrs(file2_artifact, relative_path='1.iso')
+        )
+
+        self.client.post(
+            repo['_versions_href'],
+            {'add_content_units': [file_content_unit['_href'], file2_content_unit['_href']]}
+        )
+
+        # Step 3
+        repo = self.client.get(repo['_href'])
+        self.assertDictEqual(get_content_summary(repo), FILE_SINGLE_SUMMARY)
+        self.assertDictEqual(get_added_content_summary(repo), FILE_SINGLE_SUMMARY)

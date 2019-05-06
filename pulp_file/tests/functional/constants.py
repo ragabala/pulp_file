@@ -37,6 +37,11 @@ FILE_FIXTURE_SUMMARY = {
 }
 """The desired content summary after syncing :data:`FILE_FIXTURE_URL`."""
 
+FILE_SINGLE_SUMMARY = {
+    FILE_CONTENT_NAME: 1,
+}
+"""The desired content summary after uploading a single file."""
+
 FILE_URL = urljoin(FILE_FIXTURE_URL, '1.iso')
 """The URL to an ISO file at :data:`FILE_FIXTURE_URL`."""
 
